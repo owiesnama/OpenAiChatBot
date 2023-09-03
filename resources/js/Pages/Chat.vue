@@ -9,7 +9,6 @@ const message = ref("");
 const isTyping = ref(false);
 const messages = reactive([]);
 const sendMessage = () => {
-    messages.push({ content: message.value, role: "user" });
     isTyping.value = true;
     useForm({
         prompt: message.value,
@@ -19,6 +18,7 @@ const sendMessage = () => {
             isTyping.value = false;
         },
     });
+    messages.push({ content: message.value, role: "user" });
     message.value = "";
 };
 watch(
