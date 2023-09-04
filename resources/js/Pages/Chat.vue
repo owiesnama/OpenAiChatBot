@@ -21,10 +21,23 @@ const sendMessage = () => {
     messages.push({ content: message.value, role: "user" });
     message.value = "";
 };
+const reportMessage = (index) => {
+    var message = messages[index];
+    useForm({
+        reported_answer: message.content,
+        messages,
+    }).post(route("chat.report"), {
+        onFinish() {
+        alert("Report saved!");
+        },
+    });
+}
 watch(
     () => props.response,
     () => {
-        messages.push(props.response);
+        if(props.response){
+            messages.push(props.response);
+        }
     }
 );
 </script>
@@ -34,7 +47,7 @@ watch(
         <div class="flex-1 px-4 py-4 overflow-y-auto">
             <div
                 class="flex items-center mb-4"
-                v-for="message in messages"
+                v-for="(message, index) in messages"
                 :class="message.role != 'user' ? 'flex-row-reverse' : ''"
             >
                 <div
@@ -63,6 +76,10 @@ watch(
                     "
                 >
                     <div class="text-md" v-text="message.content"></div>
+                </div>
+                <div class="p-3" v-if="message.role != 'user'">
+                    <span style="width: 16px;"></span>
+                    <a @click="reportMessage(index)" href="javascript:;"><img src="https://cdn-icons-png.flaticon.com/128/2107/2107671.png" style="width: 32px;height: 32px;" alt="Down Vote"></a>
                 </div>
             </div>
             <TypingDots v-if="isTyping" />

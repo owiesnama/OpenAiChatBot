@@ -31,6 +31,7 @@ Route::get('/', function () {
 
 Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');
 Route::post('/chat', [ChatController::class, 'store'])->name('chat.store');
+Route::post('/chat_report', [ChatController::class, 'reportMessage'])->name('chat.report');
 Route::get('/finetuning', [FineTuneingController::class, 'store'])->name('finetunings');
 Route::get('/generate-finetune-data', function () {
     $results = DB::table('spotlayerteam_institutionsprograms_institution')->select([
