@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Contracts\Container\BindingResolutionException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Inertia\ResponseFactory;
 use Inertia\Response;
 use OpenAI\Exceptions\InvalidArgumentException;
@@ -79,7 +81,7 @@ class ChatController
             [
 
                 "name" => "LogTest",
-                "description" => "Get called when the user provieded lead info",
+                "description" => "Log lead info to a log file,Get called when the user provieded lead info",
                 "parameters" => [
                     'type' => 'object',
                     'properties' => [
@@ -103,6 +105,7 @@ class ChatController
         if ($functionCall = isset($completions['choices'][0]['message']['function_call'])) {
             $functionCall = $completions['choices'][0]['message']['function_call'];
             $functionName = $functionCall['name'];
+            info($functionCall['arguments']);
             $this->$functionName(...json_decode($functionCall['arguments'], true));
         }
     }
@@ -115,5 +118,16 @@ class ChatController
     function LogTest($name = null)
     {
         info("User name is $name");
+        DB::table('otas_leads')->insert([
+            'email' => 'owiesnaama@gmail.coms',
+            'name' => $name,
+            'phone' => '213413421243',
+        ]);
     }
+
+    function sendToHook() {
+        Http::post('https://hooks.zapier.com/hooks/catch/3152365/35twx3b/');
+    }
+
+    
 }
