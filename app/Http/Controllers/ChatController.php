@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\EmbeddingBuilder;
 use App\Models\ChatReport;
 use Illuminate\Contracts\Container\BindingResolutionException;
 use Inertia\ResponseFactory;
@@ -46,16 +47,17 @@ class ChatController
         ]);
     }
 
-    function callChat($query, $messages, $type = "user", $function = null){
+    function callChat($query, $messages, $type = "user", $function = null)
+    {
         $prompt = [
             'content' => $query,
             'role' => $type,
         ];
-        if($function){
+        if ($function) {
             $prompt["name"] = $function;
         }
         array_push($messages, $prompt);
-
+        // $embeddings = EmbeddingBuilder::query($query);
         $messagesRequest = [
             [
                 'content' => "Use the following pieces of context to answer the question at the end.
@@ -81,12 +83,12 @@ class ChatController
         ]);
         $functionResponse = $this->handleOpenAiFunctionCalls($completions);
 
-        if($functionResponse){
-            // Add prompt to old messages.
+        if ($functionResponse) {
             array_push($messages, $completions['choices'][0]['message']);
             $functionName = $completions['choices'][0]['message']['function_call']['name'];
             $completions = $this->callChat($functionResponse, $messages, "function", $functionName);
         }
+
         return $completions;
     }
     /**
@@ -163,9 +165,9 @@ class ChatController
      */
     function registerStudent($name = null, $phone = null, $email = null, $lang = null)
     {
-        info("User data is: ".json_encode([
-            "name" => $name, 
-            "email" => $email, 
+        info("User data is: " . json_encode([
+            "name" => $name,
+            "email" => $email,
             "phone" => $phone,
             "lang" => $lang,
         ]));
@@ -175,8 +177,9 @@ class ChatController
         ]);
     }
 
-    function askManager($question = null, $lang = null) {
-        info("askManager called with: ".json_encode([
+    public function askManager($question = null, $lang = null)
+    {
+        info("askManager called with: " . json_encode([
             "question" => $question,
             "lang" => $lang,
         ]));
@@ -186,7 +189,8 @@ class ChatController
         ]);
     }
 
-    public function reportMessage(){
+    public function reportMessage()
+    {
         $attributes = request()->validate([
             'reported_answer' => 'required|string',
         ]);
@@ -199,9 +203,5 @@ class ChatController
         return inertia('Chat', [
             'response' => "",
         ]);
-        // return response()->json([
-        //     "status" => true,
-        //     "message" => "Reported successfully"
-        // ], 200);
     }
 }
