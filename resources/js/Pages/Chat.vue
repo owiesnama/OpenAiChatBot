@@ -9,7 +9,6 @@ const message = ref("");
 const isTyping = ref(false);
 const messages = reactive([]);
 const sendMessage = () => {
-    messages.push({ content: message.value, role: "user" });
     isTyping.value = true;
     useForm({
         prompt: message.value,
@@ -19,12 +18,28 @@ const sendMessage = () => {
             isTyping.value = false;
         },
     });
+    messages.push({ content: message.value, role: "user" });
     message.value = "";
 };
+
+const reportAnswer = (index) => {
+    let message = messages[index];
+    useForm({
+        reported_answer: message.content,
+        messages,
+    }).post(route("chat.report"), {
+        onSuccess() {
+            alert("Report saved!");
+        },
+    });
+};
+
 watch(
     () => props.response,
     () => {
-        messages.push(props.response);
+        if (props.response) {
+            messages.push(props.response);
+        }
     }
 );
 </script>
@@ -34,7 +49,7 @@ watch(
         <div class="flex-1 px-4 py-4 overflow-y-auto">
             <div
                 class="flex items-center mb-4"
-                v-for="message in messages"
+                v-for="(message, index) in messages"
                 :class="message.role != 'user' ? 'flex-row-reverse' : ''"
             >
                 <div
@@ -64,9 +79,17 @@ watch(
                 >
                     <div class="text-md" v-text="message.content"></div>
                 </div>
+                <div class="p-3" v-if="message.role != 'user'">
+                    <span style="width: 16px"></span>
+                    <a @click="reportAnswer(index)" href="javascript:;"
+                        ><img
+                            src="https://cdn-icons-png.flaticon.com/128/2107/2107671.png"
+                            style="width: 32px; height: 32px"
+                            alt="Down Vote"
+                    /></a>
+                </div>
             </div>
             <TypingDots v-if="isTyping" />
-
         </div>
 
         <form @submit.prevent="sendMessage">

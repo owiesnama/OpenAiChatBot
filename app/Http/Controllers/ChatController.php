@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\EmbeddingBuilder;
+use App\Models\ChatReport;
+use App\Models\Embedding;
 use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -12,6 +15,8 @@ use OpenAI\Exceptions\ErrorException;
 use OpenAI\Exceptions\UnserializableResponse;
 use OpenAI\Exceptions\TransporterException;
 use OpenAI\Laravel\Facades\OpenAI;
+use Psr\Container\NotFoundExceptionInterface;
+use Psr\Container\ContainerExceptionInterface;
 use RuntimeException;
 
 class ChatController
@@ -21,7 +26,7 @@ class ChatController
      * @return ResponseFactory|Response 
      * @throws RuntimeException 
      */
-    function index()
+    public function index()
     {
         return inertia('Chat');
     }
@@ -34,65 +39,85 @@ class ChatController
      * @throws UnserializableResponse 
      * @throws TransporterException 
      */
-    function store()
+    public function store()
     {
 
         $attributes = request()->validate([
             'prompt' => 'required|string',
         ]);
         $messages = request('messages') ?? [];
-        $completions = OpenAi::chat()->create([
-            'model' => 'gpt-3.5-turbo',
-            'functions' => $this->openAiFunctions(),
-            'messages' => [
-                [
-                    'content' => "Use the following pieces of context to answer the question at the end.
-                    You are a student assistant to help students apply to OKTamam System.
-                    You should answer only to the request and questions related to (learning,universities,Oktamam company), if so apolgaize to the user.
-                    Never say you are an AI model, always refer to yourself as a student assistant.
-                    If you do not know the answer say I will call my manager and get back to you.
-                    If the student wants to register you should ask him for some data one by one in separate questions:
-                     - Name
-                     - Phone
-                     - Email Address
-                    After the student enters all this data say Your data is saved and our team will call you.
-                    When students provide their personal information, re-write them in a form of key:value and add them at the end of your response with a prior line separator like (----student-info----) and call LogTest Function with all data provided.",
-                    'role' => 'system'
-                ],
-                ...$messages,
-                [
-                    'content' => $attributes['prompt'],
-                    'role' => 'user'
-                ],
-            ],
-        ]);
-        $this->handleOpenAiFunctionCalls($completions);
+
+        $completions = $this->chat($attributes['prompt'], $messages);
+
         return inertia('Chat', [
             'response' => $completions['choices'][0]['message']
         ]);
     }
     /**
      * 
-     * @return (string|(string|string[][])[])[][] 
+     * @param mixed $query 
+     * @param mixed $messages 
+     * @param string $type 
+     * @param mixed $function 
+     * @return mixed 
+     * @throws ErrorException 
+     * @throws UnserializableResponse 
+     * @throws TransporterException 
+     * @throws BindingResolutionException 
+     * @throws NotFoundExceptionInterface 
+     * @throws ContainerExceptionInterface 
+     * @throws InvalidArgumentException 
      */
-    function openAiFunctions()
+    public function chat($query, $messages, $type = "user", $function = null)
     {
-        return [
-            [
-
-                "name" => "LogTest",
-                "description" => "Log lead info to a log file,Get called when the user provieded lead info",
-                "parameters" => [
-                    'type' => 'object',
-                    'properties' => [
-                        'name' => [
-                            'type' => 'string',
-                            'description' => 'The user\'s name',
-                        ]
-                    ],
-                ]
-            ]
+        $prompt = [
+            'content' => $query,
+            'role' => $type,
         ];
+        if ($function) {
+            $prompt["name"] = $function;
+        }
+        array_push($messages, $prompt);
+        
+
+        $tokens = 0;
+        foreach ($messages as $message) {
+            $tokens += mb_strlen($message['content'] ?? '', 'UTF-8');
+        }
+
+        while($tokens > (4096 - 145)) {
+            info('max_info');
+            array_shift($messages);
+            $tokens = 0;
+            foreach ($messages as $message) {
+                $tokens += mb_strlen($message['content'] ?? '', 'UTF-8');
+            }
+        }
+
+        $vectors = EmbeddingBuilder::query($query);
+        $embeddings = Embedding::whereVectors($vectors)->limit(2)->get();
+        $textualContext = $embeddings->map(fn ($embedding) => $embedding->text)->implode("\n");
+        $messagesRequest = [
+            [
+                'content' => $this->getInitialPrompt($textualContext),
+                'role' => 'system'
+            ],
+            ...$messages,
+        ];
+        $completions = OpenAi::chat()->create([
+            'model' => 'gpt-3.5-turbo',
+            'functions' =>  config("openai.functions"),
+            'messages' => $messagesRequest,
+        ]);
+        $functionResponse = $this->handleOpenAiFunctionCalls($completions);
+
+        if ($functionResponse) {
+            array_push($messages, $completions['choices'][0]['message']);
+            $functionName = $completions['choices'][0]['message']['function_call']['name'];
+            $completions = $this->chat($functionResponse, $messages, "function", $functionName);
+        }
+
+        return $completions;
     }
     /**
      * 
@@ -105,9 +130,9 @@ class ChatController
         if ($functionCall = isset($completions['choices'][0]['message']['function_call'])) {
             $functionCall = $completions['choices'][0]['message']['function_call'];
             $functionName = $functionCall['name'];
-            info($functionCall['arguments']);
-            $this->$functionName(...json_decode($functionCall['arguments'], true));
+            return $this->$functionName(...json_decode($functionCall['arguments'], true));
         }
+        return null;
     }
     /**
      * 
@@ -115,19 +140,38 @@ class ChatController
      * @return void 
      * @throws BindingResolutionException 
      */
-    function LogTest($name = null)
+    function registerStudent($name = null, $phone = null, $email = null, $lang = null)
     {
-        info("User name is $name");
-        DB::table('otas_leads')->insert([
-            'email' => 'owiesnaama@gmail.coms',
-            'name' => $name,
-            'phone' => '213413421243',
-        ]);
+        info("User data is: " . json_encode([
+            "name" => $name,
+            "email" => $email,
+            "phone" => $phone,
+            "lang" => $lang,
+        ]));
+
+        return ["status" => false, "message" => "Fail to save student data.",];
     }
 
-    function sendToHook() {
+    public function askManager($question = null, $lang = null)
+    {
+        info("askManager called with: " . json_encode([
+            "question" => $question,
+            "lang" => $lang,
+        ]));
+        return [
+            "status" => true,
+            "message" => "Question have been sent to manager and he will continue the conversation.",
+        ];
+    }
+
+    public function getInitialPrompt($context = '')
+    {
+        $text = file_get_contents(public_path('initial-prompt.txt'));
+        return str_replace('{context}', $context, $text);
+    }
+
+    public function sendToHook()
+    {
         Http::post('https://hooks.zapier.com/hooks/catch/3152365/35twx3b/');
     }
-
-    
 }

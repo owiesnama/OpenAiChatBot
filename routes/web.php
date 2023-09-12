@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\EmbeddingsController;
+use App\Http\Controllers\ReportAnswersController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -18,47 +20,13 @@ use Inertia\Inertia;
 |
 */
 
-Route::get('/', function () {
-    return redirect()->route('chat.index');
-    return Inertia::render('Welcome', [
-        'canLogin' => Route::has('login'),
-        'canRegister' => Route::has('register'),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
-    ]);
-});
-
-
+Route::redirect('/', '/chat');
 Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');
 Route::post('/chat', [ChatController::class, 'store'])->name('chat.store');
+Route::post('/answer/report', [ReportAnswersController::class, 'store'])->name('chat.report');
 Route::get('/finetuning', [FineTuneingController::class, 'store'])->name('finetunings');
-Route::get('/generate-finetune-data', function () {
-    $results = DB::table('spotlayerteam_institutionsprograms_institution')->select([
-        'about',
-        'sector',
-        'founded',
-        'name',
-    ])->get();
-    $results = $results->map(function ($school) {
-        return [
-            [
-                'prompt' => "what about $school->name university",
-                'completion' => $school->about,
-            ],
-            [
-                'prompt' => "when $school->name founded",
-                'completion' => $school->founded,
-            ],
-            [
-                'prompt' => "what the sector of $school->name university ",
-                'completion' => $school->sector,
-            ]
-        ];
-    })->flatten(1);
-
-    File::put("data-old.json", $results);
-});
-
+Route::post('/embeddings', [EmbeddingsController::class, 'store'])->name('embeddings.store');
+Route::get('/embeddings', [EmbeddingsController::class, 'index'])->name('embeddings.index');
 Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),

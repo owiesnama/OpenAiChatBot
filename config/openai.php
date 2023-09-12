@@ -25,4 +25,55 @@ return [
     */
 
     'request_timeout' => env('OPENAI_REQUEST_TIMEOUT', 30),
+    /*
+    |--------------------------------------------------------------------------
+    | Functions
+    |--------------------------------------------------------------------------
+    |
+    | List of functions
+    */
+    'functions' => [
+        [
+            "name" => "registerStudent",
+            "description" => "Get called when the user provieded lead info",
+            "parameters" => [
+                'type' => 'object',
+                'properties' => [
+                    'name' => [
+                        'type' => 'string',
+                        'description' => 'The user\'s name',
+                    ],
+                    'email' => [
+                        'type' => 'string',
+                        'description' => 'The user\'s email',
+                    ],
+                    'phone' => [
+                        'type' => 'string',
+                        'description' => 'The user\'s phone',
+                    ],
+                    'lang' => [
+                        'type' => 'string',
+                        'description' => 'The user\'s conversation language as a lang code like en, ar, or tr',
+                    ],
+                ],
+            ]
+        ],
+        [
+            "name" => "askManager",
+            "description" => "Get called when the answer is not known to the model",
+            "parameters" => [
+                'type' => 'object',
+                'properties' => [
+                    'question' => [
+                        'type' => 'string',
+                        'description' => 'The user\'s question',
+                    ],
+                    'lang' => [
+                        'type' => 'string',
+                        'description' => 'The user\'s conversation language as a lang code like en, ar, or tr',
+                    ],
+                ],
+            ]
+        ],
+    ]
 ];
