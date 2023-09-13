@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Api\RegisterLead;
+use App\Actions\Api\SendToZapier;
 use App\Actions\EmbeddingBuilder;
 use App\Models\ChatReport;
 use App\Models\Embedding;
@@ -18,26 +20,28 @@ use OpenAI\Laravel\Facades\OpenAI;
 use Psr\Container\NotFoundExceptionInterface;
 use Psr\Container\ContainerExceptionInterface;
 use RuntimeException;
+use Gioni06\Gpt3Tokenizer\Gpt3TokenizerConfig;
+use Gioni06\Gpt3Tokenizer\Gpt3Tokenizer;
 
 class ChatController
 {
     /**
-     * 
-     * @return ResponseFactory|Response 
-     * @throws RuntimeException 
+     *
+     * @return ResponseFactory|Response
+     * @throws RuntimeException
      */
     public function index()
     {
         return inertia('Chat');
     }
     /**
-     * 
-     * @return mixed 
-     * @throws BindingResolutionException 
-     * @throws InvalidArgumentException 
-     * @throws ErrorException 
-     * @throws UnserializableResponse 
-     * @throws TransporterException 
+     *
+     * @return mixed
+     * @throws BindingResolutionException
+     * @throws InvalidArgumentException
+     * @throws ErrorException
+     * @throws UnserializableResponse
+     * @throws TransporterException
      */
     public function store()
     {
@@ -54,19 +58,19 @@ class ChatController
         ]);
     }
     /**
-     * 
-     * @param mixed $query 
-     * @param mixed $messages 
-     * @param string $type 
-     * @param mixed $function 
-     * @return mixed 
-     * @throws ErrorException 
-     * @throws UnserializableResponse 
-     * @throws TransporterException 
-     * @throws BindingResolutionException 
-     * @throws NotFoundExceptionInterface 
-     * @throws ContainerExceptionInterface 
-     * @throws InvalidArgumentException 
+     *
+     * @param mixed $query
+     * @param mixed $messages
+     * @param string $type
+     * @param mixed $function
+     * @return mixed
+     * @throws ErrorException
+     * @throws UnserializableResponse
+     * @throws TransporterException
+     * @throws BindingResolutionException
+     * @throws NotFoundExceptionInterface
+     * @throws ContainerExceptionInterface
+     * @throws InvalidArgumentException
      */
     public function chat($query, $messages, $type = "user", $function = null)
     {
@@ -78,21 +82,6 @@ class ChatController
             $prompt["name"] = $function;
         }
         array_push($messages, $prompt);
-        
-
-        $tokens = 0;
-        foreach ($messages as $message) {
-            $tokens += mb_strlen($message['content'] ?? '', 'UTF-8');
-        }
-
-        while($tokens > (4096 - 145)) {
-            info('max_info');
-            array_shift($messages);
-            $tokens = 0;
-            foreach ($messages as $message) {
-                $tokens += mb_strlen($message['content'] ?? '', 'UTF-8');
-            }
-        }
 
         $vectors = EmbeddingBuilder::query($query);
         $embeddings = Embedding::whereVectors($vectors)->limit(2)->get();
@@ -104,6 +93,27 @@ class ChatController
             ],
             ...$messages,
         ];
+
+        $config = new Gpt3TokenizerConfig();
+        $tokenizer = new Gpt3Tokenizer($config);
+
+        $tokens = 0;
+        foreach ($messagesRequest as $message) {
+            $tokens += $tokenizer->count($message['content'] ?? '');
+        }
+
+        info($tokens);
+
+        while($tokens > (4096 - 145)) {
+            array_shift($messagesRequest);
+            $tokens = 0;
+            foreach ($messagesRequest as $message) {
+                $tokens += $tokenizer->count($message['content'] ?? '');
+            }
+            info($tokens);
+        }
+
+
         $completions = OpenAi::chat()->create([
             'model' => 'gpt-3.5-turbo',
             'functions' =>  config("openai.functions"),
@@ -120,10 +130,10 @@ class ChatController
         return $completions;
     }
     /**
-     * 
-     * @param mixed $completions 
-     * @return void 
-     * @throws BindingResolutionException 
+     *
+     * @param mixed $completions
+     * @return void
+     * @throws BindingResolutionException
      */
     function handleOpenAiFunctionCalls($completions)
     {
@@ -135,10 +145,10 @@ class ChatController
         return null;
     }
     /**
-     * 
-     * @param mixed $name 
-     * @return void 
-     * @throws BindingResolutionException 
+     *
+     * @param mixed $name
+     * @return void
+     * @throws BindingResolutionException
      */
     function registerStudent($name = null, $phone = null, $email = null, $lang = null)
     {
@@ -148,6 +158,9 @@ class ChatController
             "phone" => $phone,
             "lang" => $lang,
         ]));
+
+        // RegisterLead::dispatch($name, $email, $phone);
+        SendToZapier::dispatch($name, $email, $phone);
 
         return ["status" => false, "message" => "Fail to save student data.",];
     }
@@ -159,8 +172,8 @@ class ChatController
             "lang" => $lang,
         ]));
         return [
-            "status" => true,
-            "message" => "Question have been sent to manager and he will continue the conversation.",
+            "role" => 'system',
+            "content" => "Question have been sent to manager and he will continue the conversation.",
         ];
     }
 
@@ -168,10 +181,5 @@ class ChatController
     {
         $text = file_get_contents(public_path('initial-prompt.txt'));
         return str_replace('{context}', $context, $text);
-    }
-
-    public function sendToHook()
-    {
-        Http::post('https://hooks.zapier.com/hooks/catch/3152365/35twx3b/');
     }
 }

@@ -30,5 +30,12 @@ return [
         'secret' => env('AWS_SECRET_ACCESS_KEY'),
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
+    'otas' => [
+        'endpoint' => env('OTAS_HOOK'),
+        'api_key' => env('OTAS_API_KEY'),
+    ],
+    'zapier' => [
+        'endpoint' => env('ZAPIER_HOOK'),
+    ]
 
 ];
