@@ -5,11 +5,9 @@ namespace App\Http\Controllers;
 use App\Actions\Api\RegisterLead;
 use App\Actions\Api\SendToZapier;
 use App\Actions\EmbeddingBuilder;
-use App\Models\ChatReport;
 use App\Models\Embedding;
+use Exception;
 use Illuminate\Contracts\Container\BindingResolutionException;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Inertia\ResponseFactory;
 use Inertia\Response;
 use OpenAI\Exceptions\InvalidArgumentException;
@@ -50,8 +48,17 @@ class ChatController
             'prompt' => 'required|string',
         ]);
         $messages = request('messages') ?? [];
-
-        $completions = $this->chat($attributes['prompt'], $messages);
+        try{
+            $completions = $this->chat($attributes['prompt'], $messages);
+        }catch(Exception $e){
+            info($e->getMessage());
+           return inertia('Chat', [
+                'response' => [
+                    "role" => 'system',
+                    "content" => "Sorry something went wrong, try again"
+           ]
+            ]);
+        }
 
         return inertia('Chat', [
             'response' => $completions['choices'][0]['message']
@@ -59,10 +66,10 @@ class ChatController
     }
     /**
      *
-     * @param mixed $query
+     * @param mixed $content
      * @param mixed $messages
-     * @param string $type
-     * @param mixed $function
+     * @param string $role
+     * @param mixed $functionName
      * @return mixed
      * @throws ErrorException
      * @throws UnserializableResponse
@@ -72,18 +79,19 @@ class ChatController
      * @throws ContainerExceptionInterface
      * @throws InvalidArgumentException
      */
-    public function chat($query, $messages, $type = "user", $function = null)
+    public function chat($content, $messages, $role = "user", $functionName = null)
     {
         $prompt = [
-            'content' => $query,
-            'role' => $type,
+            'content' => $content,
+            'role' => $role,
         ];
-        if ($function) {
-            $prompt["name"] = $function;
+        if ($functionName) {
+            $prompt["name"] = $functionName;
         }
+        info($prompt);
         array_push($messages, $prompt);
 
-        $vectors = EmbeddingBuilder::query($query);
+        $vectors = EmbeddingBuilder::query($content);
         $embeddings = Embedding::whereVectors($vectors)->limit(2)->get();
         $textualContext = $embeddings->map(fn ($embedding) => $embedding->text)->implode("\n");
         $messagesRequest = [
@@ -94,23 +102,22 @@ class ChatController
             ...$messages,
         ];
 
-        $config = new Gpt3TokenizerConfig();
-        $tokenizer = new Gpt3Tokenizer($config);
+        $tokenizer = new Gpt3Tokenizer(
+            new Gpt3TokenizerConfig
+        );
 
         $tokens = 0;
         foreach ($messagesRequest as $message) {
             $tokens += $tokenizer->count($message['content'] ?? '');
         }
 
-        info($tokens);
 
-        while($tokens > (4096 - 145)) {
+        while ($tokens > (4096 - 145)) {
             array_shift($messagesRequest);
             $tokens = 0;
             foreach ($messagesRequest as $message) {
                 $tokens += $tokenizer->count($message['content'] ?? '');
             }
-            info($tokens);
         }
 
 
@@ -119,6 +126,7 @@ class ChatController
             'functions' =>  config("openai.functions"),
             'messages' => $messagesRequest,
         ]);
+
         $functionResponse = $this->handleOpenAiFunctionCalls($completions);
 
         if ($functionResponse) {
@@ -152,25 +160,14 @@ class ChatController
      */
     function registerStudent($name = null, $phone = null, $email = null, $lang = null)
     {
-        info("User data is: " . json_encode([
-            "name" => $name,
-            "email" => $email,
-            "phone" => $phone,
-            "lang" => $lang,
-        ]));
-
         // RegisterLead::dispatch($name, $email, $phone);
         SendToZapier::dispatch($name, $email, $phone);
 
-        return ["status" => false, "message" => "Fail to save student data.",];
+        return ["status" => true, "message" => "Student data has been saved.",];
     }
 
     public function askManager($question = null, $lang = null)
     {
-        info("askManager called with: " . json_encode([
-            "question" => $question,
-            "lang" => $lang,
-        ]));
         return [
             "role" => 'system',
             "content" => "Question have been sent to manager and he will continue the conversation.",
